@@ -63,7 +63,7 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
         model_name = model_name_deepseek[model_name]
     elif model_name in list(model_name_openai.keys()):
         api_key = "CDHhGET6CaPgEj6e2itV3xQjO10kVyquZaVW7FJvBlu1j4SYHjc0JQQJ99BKACYeBjFXJ3w3AAAAACOGyMor"
-        base_url = "https://foundationmodeldepartment.cognitiveservices.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2025-01-01-preview"
+        base_url = "https://foundationmodeldepartment.openai.azure.com/openai/v1"
         model_name = model_name_openai[model_name]
     elif model_name in list(model_name_01.keys()):
         api_key = "a789593637d442b2b78a63e24bac0202"
