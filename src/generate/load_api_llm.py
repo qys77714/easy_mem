@@ -40,7 +40,7 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
         "Llama-3.1-8B-Instruct": ("Llama-3.1-8B-Instruct", 8000),
         "Llama-3.2-3B-Instruct": ("Llama-3.2-3B-Instruct", 8000),
         "Ministral-8B-Instruct": ("Ministral-8B-Instruct", 8000),
-        "Qwen2.5-7B-Instruct": ("Qwen2.5-7B-Instruct", 7107),
+        "Qwen2.5-7B-Instruct": ("Qwen2.5-7B-Instruct", 7105),
         "qwen3-moe": ("qwen3-moe", 8000),
         "Qwen3-8B": ("Qwen3-8B", 7102),
         "qwen3-30b-moe": ("qwen3-30b-moe", 8000),
