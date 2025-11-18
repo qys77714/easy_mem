@@ -40,10 +40,9 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
         "Llama-3.1-8B-Instruct": ("Llama-3.1-8B-Instruct", 8000),
         "Llama-3.2-3B-Instruct": ("Llama-3.2-3B-Instruct", 8000),
         "Ministral-8B-Instruct": ("Ministral-8B-Instruct", 8000),
-        "Qwen2.5-7B-Instruct": ("Qwen2.5-7B-Instruct", 7106),
+        "Qwen2.5-7B-Instruct": ("Qwen2.5-7B-Instruct", 7107),
         "qwen3-moe": ("qwen3-moe", 8000),
-        "qwen3-32b": ("qwen3-32b", 8000),
-        "qwen3-8b": ("qwen3-8b", 8000),
+        "Qwen3-8B": ("Qwen3-8B", 7102),
         "qwen3-30b-moe": ("qwen3-30b-moe", 8000),
     }
 
@@ -51,6 +50,9 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
         model_name, local_port = model_name_vllm[model_name]
         api_key = "zjj"
         base_url = f"http://localhost:{local_port}/v1/"
+    elif model_name == "qwen3-32b":
+        api_key = "mem"
+        base_url = "http://10.0.2.219:1146/v1"
     elif model_name in list(model_name_qwen.keys()):
         api_key = "sk-f00f70df2abe444a9e930313085cffe9"
         base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -60,8 +62,8 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
         base_url = "https://api.deepseek.com/v1"
         model_name = model_name_deepseek[model_name]
     elif model_name in list(model_name_openai.keys()):
-        api_key = "sk-yx5VeS4xYwchVVMO1e6fEdEcCfF448B68e65Bb31E9F6Ba97"
-        base_url = "https://api.ai-gaochao.cn/v1"
+        api_key = "CDHhGET6CaPgEj6e2itV3xQjO10kVyquZaVW7FJvBlu1j4SYHjc0JQQJ99BKACYeBjFXJ3w3AAAAACOGyMor"
+        base_url = "https://foundationmodeldepartment.cognitiveservices.azure.com/openai/deployments/gpt-4o-mini/chat/completions?api-version=2025-01-01-preview"
         model_name = model_name_openai[model_name]
     elif model_name in list(model_name_01.keys()):
         api_key = "a789593637d442b2b78a63e24bac0202"
