@@ -14,6 +14,8 @@ experiment_old
 logs
 MemDB
 MemDB_old
+# Nested clone / submodule candidate — do not track as embedded repo
+Mem-alpha/
 src/generate/load_api_llm_azure.py
 src/generate/openai_chat_batch_azure.py
 

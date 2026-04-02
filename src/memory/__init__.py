@@ -4,6 +4,8 @@ from .baselines.rag import RagMemorySystem
 from .baselines.only_query import OnlyQueryMemorySystem
 from .amem import AMemMemorySystem
 from .mem0 import Mem0MemorySystem
+from .mem_alpha import MemAlphaMemorySystem
+
 
 def get_memory_system(
     method_name: str,
@@ -82,6 +84,25 @@ def get_memory_system(
             manager_max_new_tokens=kwargs.get("manager_max_new_tokens", 2048),
             extract_concurrency=kwargs.get("extract_concurrency", 8),
         )
+    elif method_name == "mem_alpha":
+        llm_client = kwargs.get("llm_client")
+        if llm_client is None:
+            raise ValueError("mem_alpha requires llm_client (via kwargs)")
+        return MemAlphaMemorySystem(
+            embed_model_name=embed_model_name,
+            llm_client=llm_client,
+            embed_client=embed_client,
+            database_root=database_root,
+            related_memory_top_k=kwargs.get("related_memory_top_k", kwargs.get("retrieve_topk", 5)),
+            language=kwargs.get("language", "en"),
+            granularity=kwargs.get("granularity", "all"),
+            trace_log_dir=kwargs.get("trace_log_dir"),
+            including_core=kwargs.get("including_core", False),
+            search_method=kwargs.get("mem_alpha_search_method", "bm25"),
+            dialogue_format=kwargs.get("dialogue_format", "user_assistant"),
+            manager_max_new_tokens=kwargs.get("manager_max_new_tokens", 2048),
+            allow_memory_delete=kwargs.get("allow_memory_delete", True),
+        )
     else:
         raise ValueError(f"Unknown memory method: {method_name}")
 
@@ -94,4 +115,5 @@ __all__ = [
     "OnlyQueryMemorySystem",
     "AMemMemorySystem",
     "Mem0MemorySystem",
+    "MemAlphaMemorySystem",
 ]

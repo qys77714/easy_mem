@@ -29,6 +29,7 @@ BENCHMARK_TO_DATASET: Dict[str, Tuple[str, str]] = {
     "locomo": ("data/raw_data/locomo10.json", "en"),
     "lmb_event": ("data/preprocessed/LifeMemBench_event.json", "zh"),
     "emb_event": ("data/preprocessed/EgoMemBench_event_half.json", "en"),
+    "hotpotqa_dev": ("data/preprocessed/hotpotqa_dev_multiquery_converted.json", "en")
 }
 
 
@@ -46,6 +47,7 @@ class GenerateConfig:
     memory_token_limit: int
     memory_granularity: str
     database_root: Optional[str]
+    memory_trace_dir: Optional[str]
     embedding_base_url: str
     embedding_api_key: Optional[str]
     language: Optional[str]
@@ -55,6 +57,11 @@ class GenerateConfig:
     mem0_dialogue_format: str
     manager_max_new_tokens: int
     mem0_extract_concurrency: int
+    mem_alpha_including_core: bool
+    mem_alpha_allow_delete: bool
+    mem_alpha_search_method: str
+    answer_concurrency: int
+    store_memory_only: bool
 
 
 def _normalize_memory_granularity(value: str) -> str:
@@ -77,13 +84,13 @@ def parse_args() -> GenerateConfig:
     parser.add_argument(
         "--method",
         required=True,
-        help="记忆方法，如 amem / mem0 / mem0_nodel / rag / full_context",
+        help="记忆方法，如 amem / mem0 / mem0_nodel / mem_alpha / rag / full_context",
     )
     parser.add_argument("--extractor_model", default=None, help="记忆抽取模型（预留，当前优先使用 manager_model）")
     parser.add_argument(
         "--manager_model",
         default=None,
-        help="记忆管理模型（amem / mem0 / mem0_nodel 必填其一）",
+        help="记忆管理模型（amem / mem0 / mem0_nodel / mem_alpha 必填其一）",
     )
     parser.add_argument("--answer_model", required=True, help="回答问题模型")
     parser.add_argument("--embedding_model", required=True, help="向量模型")
@@ -97,6 +104,7 @@ def parse_args() -> GenerateConfig:
     )
 
     parser.add_argument("--database_root", default=None, help="向量库根目录，默认自动拼接")
+    parser.add_argument("--memory_trace_dir", default=None, help="记忆 trace 日志目录，默认自动拼接")
     parser.add_argument("--embedding_base_url", default=os.getenv("EMBEDDING_BASE_URL", "http://localhost:7110/v1/"))
     parser.add_argument("--embedding_api_key", default=os.getenv("EMBEDDING_API_KEY"))
     parser.add_argument("--language", default=None, help="可选覆盖语言: zh/en")
@@ -126,13 +134,41 @@ def parse_args() -> GenerateConfig:
         "--manager_max_new_tokens",
         type=int,
         default=2048,
-        help="amem/mem0 记忆管理 LLM 的 max_new_tokens（传给 OpenAI 兼容 API 的 max_tokens）",
+        help="amem/mem0/mem_alpha 记忆管理 LLM 的 max_new_tokens（传给 OpenAI 兼容 API 的 max_tokens）",
+    )
+    parser.add_argument(
+        "--mem-alpha-including-core",
+        action="store_true",
+        help="mem_alpha：启用 core memory（与 Mem-alpha 一致）",
+    )
+    parser.add_argument(
+        "--mem-alpha-search-method",
+        default="embedding",
+        choices=["bm25", "embedding"],
+        help="mem_alpha：检索时 semantic/episodic 使用 bm25 或 embedding 相似度",
+    )
+    parser.add_argument(
+        "--mem-alpha-allow-delete",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="mem_alpha：是否允许 memory_delete 工具（默认允许；设置 --no-mem-alpha-allow-delete 可禁用）",
     )
     parser.add_argument(
         "--mem0-extract-concurrency",
         type=int,
         default=8,
         help="mem0/mem0_nodel：episode 内事实抽取 LLM 调用的最大并发（1=串行）；与 --parallel-episodes 相乘影响总 QPS",
+    )
+    parser.add_argument(
+        "--answer-concurrency",
+        type=int,
+        default=2,
+        help="每个 episode 内答题 LLM 请求的最大并发；与 --parallel-episodes 相乘近似为答题峰值并发",
+    )
+    parser.add_argument(
+        "--store-memory-only",
+        action="store_true",
+        help="仅构建/更新记忆，不执行答题与输出写入",
     )
 
     args = parser.parse_args()
@@ -151,6 +187,7 @@ def parse_args() -> GenerateConfig:
         memory_token_limit=args.memory_token_limit,
         memory_granularity=granularity,
         database_root=args.database_root,
+        memory_trace_dir=args.memory_trace_dir,
         embedding_base_url=args.embedding_base_url,
         embedding_api_key=args.embedding_api_key,
         language=args.language,
@@ -160,6 +197,11 @@ def parse_args() -> GenerateConfig:
         mem0_dialogue_format=str(args.mem0_dialogue_format),
         manager_max_new_tokens=int(args.manager_max_new_tokens),
         mem0_extract_concurrency=max(1, int(args.mem0_extract_concurrency)),
+        mem_alpha_including_core=bool(args.mem_alpha_including_core),
+        mem_alpha_allow_delete=bool(args.mem_alpha_allow_delete),
+        mem_alpha_search_method=str(args.mem_alpha_search_method),
+        answer_concurrency=max(1, int(args.answer_concurrency)),
+        store_memory_only=bool(args.store_memory_only),
     )
 
 
@@ -180,7 +222,7 @@ def _resolve_benchmark(cfg: GenerateConfig) -> Tuple[str, str]:
 
 def _build_experiment_name(cfg: GenerateConfig) -> str:
     """Build experiment dir name: {benchmark}_gran{gran}_{method}_{model}."""
-    if cfg.method in {"amem", "mem0", "mem0_nodel"}:
+    if cfg.method in {"amem", "mem0", "mem0_nodel", "mem_alpha"}:
         model = cfg.manager_model or cfg.extractor_model or "default"
     else:
         model = cfg.answer_model
@@ -217,14 +259,14 @@ def _build_memory_system(cfg: GenerateConfig, language: str):
 
     llm_client = None
     trace_log_dir = None
-    if method in {"amem", "mem0", "mem0_nodel"}:
+    if method in {"amem", "mem0", "mem0_nodel", "mem_alpha"}:
         manager_or_extractor_model = cfg.manager_model or cfg.extractor_model
         if not manager_or_extractor_model:
             raise ValueError(
-                "For method 'amem'/'mem0'/'mem0_nodel', please provide --manager_model (or --extractor_model)."
+                "For method 'amem'/'mem0'/'mem0_nodel'/'mem_alpha', please provide --manager_model (or --extractor_model)."
             )
         llm_client = load_api_chat_completion(manager_or_extractor_model, async_=False)
-        trace_log_dir = _build_memory_trace_dir(cfg)
+        trace_log_dir = cfg.memory_trace_dir or _build_memory_trace_dir(cfg)
 
     kwargs: Dict[str, Any] = {
         "granularity": cfg.memory_granularity,
@@ -237,7 +279,12 @@ def _build_memory_system(cfg: GenerateConfig, language: str):
     if method in ("mem0", "mem0_nodel"):
         kwargs["dialogue_format"] = _resolve_mem0_dialogue_format(cfg)
         kwargs["extract_concurrency"] = cfg.mem0_extract_concurrency
-    if method in {"amem", "mem0", "mem0_nodel"}:
+    if method == "mem_alpha":
+        kwargs["dialogue_format"] = _resolve_mem0_dialogue_format(cfg)
+        kwargs["including_core"] = cfg.mem_alpha_including_core
+        kwargs["allow_memory_delete"] = cfg.mem_alpha_allow_delete
+        kwargs["mem_alpha_search_method"] = cfg.mem_alpha_search_method
+    if method in {"amem", "mem0", "mem0_nodel", "mem_alpha"}:
         kwargs["manager_max_new_tokens"] = cfg.manager_max_new_tokens
 
     return get_memory_system(
@@ -266,6 +313,7 @@ def _memory_ready_payload(cfg: GenerateConfig, episode: MemoryEpisode) -> Dict[s
         "fingerprint": _episode_memory_fingerprint(episode),
         "method": cfg.method,
         "memory_granularity": cfg.memory_granularity,
+        "embedding_model": cfg.embedding_model,
     }
 
 
@@ -286,6 +334,7 @@ def _write_memory_ready_marker_atomic(marker_path: Path, payload: Dict[str, Any]
 
 
 def _is_memory_ready(
+    cfg: GenerateConfig,
     memory_system: BaseMemorySystem,
     episode: MemoryEpisode,
 ) -> bool:
@@ -301,6 +350,10 @@ def _is_memory_ready(
     if int(data.get("num_sessions", -1)) != len(episode.sessions):
         return False
     if str(data.get("fingerprint", "")) != _episode_memory_fingerprint(episode):
+        return False
+    # Markers without this key remain valid (backward compatible); mismatch forces rebuild.
+    emb = data.get("embedding_model")
+    if emb is not None and str(emb) != str(cfg.embedding_model):
         return False
     return True
 
@@ -414,7 +467,7 @@ async def _process_episode(
     cfg: GenerateConfig,
     episode: MemoryEpisode,
     episode_idx: int,
-    agent: StandardAgent,
+    agent: Optional[StandardAgent],
     memory_system: BaseMemorySystem,
     loop: asyncio.AbstractEventLoop,
     executor: ThreadPoolExecutor,
@@ -427,7 +480,7 @@ async def _process_episode(
 ) -> None:
     """Store sessions when memory not ready (or --rebuild-memory), then answer pending questions only."""
     history_name = str(episode.history_name)
-    need_store = cfg.rebuild_memory or not _is_memory_ready(memory_system, episode)
+    need_store = cfg.rebuild_memory or not _is_memory_ready(cfg, memory_system, episode)
 
     async with semaphore:
         if need_store:
@@ -444,22 +497,25 @@ async def _process_episode(
             if marker_path is not None:
                 _write_memory_ready_marker_atomic(marker_path, _memory_ready_payload(cfg, episode))
 
-        responses = await agent.batch_answer_questions(
-            history_name=history_name,
-            questions=pending_qas,
-            top_k=cfg.retrieve_topk,
-        )
+        if not cfg.store_memory_only:
+            if agent is None:
+                raise RuntimeError("agent must not be None when store_memory_only is False")
+            responses = await agent.batch_answer_questions(
+                history_name=history_name,
+                questions=pending_qas,
+                top_k=cfg.retrieve_topk,
+            )
 
-        records = [
-            _build_record(cfg.benchmark, history_name, q, ans)
-            for q, ans in zip(pending_qas, responses)
-        ]
+            records = [
+                _build_record(cfg.benchmark, history_name, q, ans)
+                for q, ans in zip(pending_qas, responses)
+            ]
 
-        with output_lock:
-            with output_path.open("a", encoding="utf-8") as f:
-                for record in records:
-                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                f.flush()
+            with output_lock:
+                with output_path.open("a", encoding="utf-8") as f:
+                    for record in records:
+                        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    f.flush()
 
         pbar.update(1)
 
@@ -476,34 +532,40 @@ async def run_pipeline(cfg: GenerateConfig) -> None:
     output_path = Path(cfg.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    answered = _load_answered_keys(output_path)
     episodes_to_process: List[Tuple[int, MemoryEpisode, List[QuestionItem]]] = []
-    for idx, episode in enumerate(benchmark):
-        h = str(episode.history_name)
-        pending_qas = [q for q in episode.qas if (h, _question_id_for_episode(h, q)) not in answered]
-        if pending_qas:
-            episodes_to_process.append((idx, episode, pending_qas))
+    if cfg.store_memory_only:
+        for idx, episode in enumerate(benchmark):
+            episodes_to_process.append((idx, episode, []))
+    else:
+        answered = _load_answered_keys(output_path)
+        for idx, episode in enumerate(benchmark):
+            h = str(episode.history_name)
+            pending_qas = [q for q in episode.qas if (h, _question_id_for_episode(h, q)) not in answered]
+            if pending_qas:
+                episodes_to_process.append((idx, episode, pending_qas))
 
     if not episodes_to_process:
         return
 
     memory_system = _build_memory_system(cfg, language=language)
-    answer_chat_model = load_api_chat_completion(cfg.answer_model, async_=True)
-
-    agent = StandardAgent(
-        memory_system=memory_system,
-        chat_model=answer_chat_model,
-        memory_token_limit=cfg.memory_token_limit,
-        language=language,
-        trace_log_dir=cfg.agent_trace_dir,
-    )
+    agent: Optional[StandardAgent] = None
+    if not cfg.store_memory_only:
+        answer_chat_model = load_api_chat_completion(cfg.answer_model, async_=True)
+        agent = StandardAgent(
+            memory_system=memory_system,
+            chat_model=answer_chat_model,
+            memory_token_limit=cfg.memory_token_limit,
+            language=language,
+            trace_log_dir=cfg.agent_trace_dir,
+            answer_max_concurrency=cfg.answer_concurrency,
+        )
 
     loop = asyncio.get_running_loop()
     semaphore = asyncio.Semaphore(cfg.parallel_episodes)
     output_lock = threading.Lock()
     pbar = tqdm(
         total=len(episodes_to_process),
-        desc="Generating (episodes with pending questions)",
+        desc="Building memory only" if cfg.store_memory_only else "Generating (episodes with pending questions)",
         position=0,
         leave=True,
     )

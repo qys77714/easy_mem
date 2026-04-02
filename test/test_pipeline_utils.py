@@ -27,6 +27,9 @@ def test_resolve_benchmark_with_explicit_file():
         mem0_dialogue_format="auto",
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem_alpha_including_core=False,
+        mem_alpha_search_method="bm25",
+        answer_concurrency=2,
     )
     fp, lang = pg._resolve_benchmark(cfg)
     assert fp == "/tmp/a.json"
@@ -54,6 +57,9 @@ def test_resolve_mem0_dialogue_format():
         rebuild_memory=False,
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem_alpha_including_core=False,
+        mem_alpha_search_method="bm25",
+        answer_concurrency=2,
     )
     assert (
         pg._resolve_mem0_dialogue_format(
@@ -100,6 +106,9 @@ def test_resolve_benchmark_unknown_raises():
         mem0_dialogue_format="auto",
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem_alpha_including_core=False,
+        mem_alpha_search_method="bm25",
+        answer_concurrency=2,
     )
     with pytest.raises(ValueError):
         pg._resolve_benchmark(cfg)

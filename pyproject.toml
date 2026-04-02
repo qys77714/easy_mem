@@ -5,6 +5,8 @@ description = "Unified benchmark pipeline for comparing long-context memory meth
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "rank-bm25>=0.2.2",
+    "tiktoken>=0.7.0",
     "faiss-cpu>=1.13.2",
     "pydantic>=2.9.2",
     "pytest>=9.0.2",
@@ -15,6 +17,8 @@ dependencies = [
     "jinja2>=3.1.0",
     "openai>=1.0.0",
     "tqdm>=4.0.0",
+    "pandas>=2.3.3",
+    "pyarrow>=23.0.1",
 ]
 
 [[tool.uv.index]]
