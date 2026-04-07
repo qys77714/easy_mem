@@ -11,11 +11,11 @@ from tqdm.asyncio import tqdm
 from utils.common_utils import configure_logging
 
 
-def _extra_body_disable_qwen_thinking(existing: dict | None) -> dict:
-    """Merge with caller extra_body; Qwen3.5-style servers read chat_template_kwargs.enable_thinking."""
+def merge_extra_body_qwen_thinking(existing: dict | None, enable_thinking: bool) -> dict:
+    """Merge with caller extra_body; Qwen3-style servers read chat_template_kwargs.enable_thinking."""
     merged = dict(existing) if existing else {}
     chat_kw = dict(merged.get("chat_template_kwargs") or {})
-    chat_kw["enable_thinking"] = False
+    chat_kw["enable_thinking"] = bool(enable_thinking)
     merged["chat_template_kwargs"] = chat_kw
     return merged
 
@@ -30,9 +30,11 @@ class OpenAIClient:
         api_key=None,
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
+        enable_qwen_thinking: bool = False,
     ):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model
+        self.enable_qwen_thinking = bool(enable_qwen_thinking)
         self.logger = logging.getLogger(__name__)
         if _legacy_log_enabled():
             time.sleep(1)
@@ -72,7 +74,9 @@ class OpenAIClient:
                     messages=messages,
                     max_tokens=max_new_tokens,
                     temperature=temperature,
-                    extra_body=_extra_body_disable_qwen_thinking(user_extra),
+                    extra_body=merge_extra_body_qwen_thinking(
+                        user_extra, self.enable_qwen_thinking
+                    ),
                     **kargs,
                 )
 
@@ -98,9 +102,11 @@ class AsyncOpenAIClient:
         api_key=None,
         base_url: str = "https://api.openai.com/v1",
         model: str = "gpt-4o-mini",
+        enable_qwen_thinking: bool = False,
     ):
         self.client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model
+        self.enable_qwen_thinking = bool(enable_qwen_thinking)
         self.logger = logging.getLogger(__name__)
         if _legacy_log_enabled():
             ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[4:-7]
@@ -139,7 +145,9 @@ class AsyncOpenAIClient:
                             messages=messages,
                             max_tokens=max_tokens,
                             temperature=temperature,
-                            extra_body=_extra_body_disable_qwen_thinking(user_extra),
+                            extra_body=merge_extra_body_qwen_thinking(
+                                user_extra, self.enable_qwen_thinking
+                            ),
                             **kwargs,
                         )
                     response = completion.choices[0].message.content
@@ -197,4 +205,4 @@ class AsyncOpenAIClient:
         return [r[1] for r in sorted_results]
 
 
-__all__ = ["OpenAIClient", "AsyncOpenAIClient"]
+__all__ = ["OpenAIClient", "AsyncOpenAIClient", "merge_extra_body_qwen_thinking"]

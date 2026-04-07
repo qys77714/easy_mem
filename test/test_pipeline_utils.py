@@ -18,6 +18,7 @@ def test_resolve_benchmark_with_explicit_file():
         memory_token_limit=2048,
         memory_granularity="session",
         database_root=None,
+        memory_trace_dir=None,
         embedding_base_url="http://x",
         embedding_api_key="k",
         language="zh",
@@ -27,9 +28,13 @@ def test_resolve_benchmark_with_explicit_file():
         mem0_dialogue_format="auto",
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem0_related_memory_aggregate_cap=10,
         mem_alpha_including_core=False,
+        mem_alpha_allow_delete=True,
         mem_alpha_search_method="bm25",
         answer_concurrency=2,
+        store_memory_only=False,
+        enable_qwen_thinking=False,
     )
     fp, lang = pg._resolve_benchmark(cfg)
     assert fp == "/tmp/a.json"
@@ -49,6 +54,7 @@ def test_resolve_mem0_dialogue_format():
         memory_token_limit=2048,
         memory_granularity="all",
         database_root=None,
+        memory_trace_dir=None,
         embedding_base_url="http://x",
         embedding_api_key="k",
         language=None,
@@ -57,9 +63,13 @@ def test_resolve_mem0_dialogue_format():
         rebuild_memory=False,
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem0_related_memory_aggregate_cap=10,
         mem_alpha_including_core=False,
+        mem_alpha_allow_delete=True,
         mem_alpha_search_method="bm25",
         answer_concurrency=2,
+        store_memory_only=False,
+        enable_qwen_thinking=False,
     )
     assert (
         pg._resolve_mem0_dialogue_format(
@@ -97,6 +107,7 @@ def test_resolve_benchmark_unknown_raises():
         memory_token_limit=2048,
         memory_granularity="session",
         database_root=None,
+        memory_trace_dir=None,
         embedding_base_url="http://x",
         embedding_api_key="k",
         language=None,
@@ -106,9 +117,13 @@ def test_resolve_benchmark_unknown_raises():
         mem0_dialogue_format="auto",
         manager_max_new_tokens=2048,
         mem0_extract_concurrency=8,
+        mem0_related_memory_aggregate_cap=10,
         mem_alpha_including_core=False,
+        mem_alpha_allow_delete=True,
         mem_alpha_search_method="bm25",
         answer_concurrency=2,
+        store_memory_only=False,
+        enable_qwen_thinking=False,
     )
     with pytest.raises(ValueError):
         pg._resolve_benchmark(cfg)

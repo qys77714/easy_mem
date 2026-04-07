@@ -57,11 +57,13 @@ class GenerateConfig:
     mem0_dialogue_format: str
     manager_max_new_tokens: int
     mem0_extract_concurrency: int
+    mem0_related_memory_aggregate_cap: int
     mem_alpha_including_core: bool
     mem_alpha_allow_delete: bool
     mem_alpha_search_method: str
     answer_concurrency: int
     store_memory_only: bool
+    enable_qwen_thinking: bool
 
 
 def _normalize_memory_granularity(value: str) -> str:
@@ -160,6 +162,12 @@ def parse_args() -> GenerateConfig:
         help="mem0/mem0_nodel：episode 内事实抽取 LLM 调用的最大并发（1=串行）；与 --parallel-episodes 相乘影响总 QPS",
     )
     parser.add_argument(
+        "--mem0-related-memory-aggregate-cap",
+        type=int,
+        default=10,
+        help="mem0/mem0_nodel：更新记忆时，对各 fact 检索命中去重后最多保留几条旧记忆送入 decide LLM（按 score 截断）",
+    )
+    parser.add_argument(
         "--answer-concurrency",
         type=int,
         default=2,
@@ -169,6 +177,12 @@ def parse_args() -> GenerateConfig:
         "--store-memory-only",
         action="store_true",
         help="仅构建/更新记忆，不执行答题与输出写入",
+    )
+    parser.add_argument(
+        "--enable-qwen-thinking",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Qwen3 Thinking 模型：是否在 chat_template_kwargs 中开启 enable_thinking（默认关闭；也可用环境变量 QWEN_ENABLE_THINKING）",
     )
 
     args = parser.parse_args()
@@ -197,11 +211,13 @@ def parse_args() -> GenerateConfig:
         mem0_dialogue_format=str(args.mem0_dialogue_format),
         manager_max_new_tokens=int(args.manager_max_new_tokens),
         mem0_extract_concurrency=max(1, int(args.mem0_extract_concurrency)),
+        mem0_related_memory_aggregate_cap=max(1, int(args.mem0_related_memory_aggregate_cap)),
         mem_alpha_including_core=bool(args.mem_alpha_including_core),
         mem_alpha_allow_delete=bool(args.mem_alpha_allow_delete),
         mem_alpha_search_method=str(args.mem_alpha_search_method),
         answer_concurrency=max(1, int(args.answer_concurrency)),
         store_memory_only=bool(args.store_memory_only),
+        enable_qwen_thinking=bool(args.enable_qwen_thinking),
     )
 
 
@@ -265,7 +281,11 @@ def _build_memory_system(cfg: GenerateConfig, language: str):
             raise ValueError(
                 "For method 'amem'/'mem0'/'mem0_nodel'/'mem_alpha', please provide --manager_model (or --extractor_model)."
             )
-        llm_client = load_api_chat_completion(manager_or_extractor_model, async_=False)
+        llm_client = load_api_chat_completion(
+            manager_or_extractor_model,
+            async_=False,
+            enable_qwen_thinking=cfg.enable_qwen_thinking,
+        )
         trace_log_dir = cfg.memory_trace_dir or _build_memory_trace_dir(cfg)
 
     kwargs: Dict[str, Any] = {
@@ -279,6 +299,7 @@ def _build_memory_system(cfg: GenerateConfig, language: str):
     if method in ("mem0", "mem0_nodel"):
         kwargs["dialogue_format"] = _resolve_mem0_dialogue_format(cfg)
         kwargs["extract_concurrency"] = cfg.mem0_extract_concurrency
+        kwargs["related_memory_aggregate_cap"] = cfg.mem0_related_memory_aggregate_cap
     if method == "mem_alpha":
         kwargs["dialogue_format"] = _resolve_mem0_dialogue_format(cfg)
         kwargs["including_core"] = cfg.mem_alpha_including_core
@@ -550,7 +571,11 @@ async def run_pipeline(cfg: GenerateConfig) -> None:
     memory_system = _build_memory_system(cfg, language=language)
     agent: Optional[StandardAgent] = None
     if not cfg.store_memory_only:
-        answer_chat_model = load_api_chat_completion(cfg.answer_model, async_=True)
+        answer_chat_model = load_api_chat_completion(
+            cfg.answer_model,
+            async_=True,
+            enable_qwen_thinking=cfg.enable_qwen_thinking,
+        )
         agent = StandardAgent(
             memory_system=memory_system,
             chat_model=answer_chat_model,

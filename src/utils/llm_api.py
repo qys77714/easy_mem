@@ -11,8 +11,23 @@ def _get_required_env(key: str) -> str:
 	return value
 
 
-def load_api_chat_completion(model_name, async_=False, *args, **kargs):
+def _resolve_enable_qwen_thinking(explicit: bool | None) -> bool:
+	"""If explicit is set, use it; else env QWEN_ENABLE_THINKING (default off)."""
+	if explicit is not None:
+		return bool(explicit)
+	v = os.getenv("QWEN_ENABLE_THINKING", "0")
+	return v.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def load_api_chat_completion(
+	model_name,
+	async_=False,
+	enable_qwen_thinking: bool | None = None,
+	*args,
+	**kargs,
+):
 	load_env()
+	enable_qwen_thinking = _resolve_enable_qwen_thinking(enable_qwen_thinking)
 
 	model_name_qwen = {
 		# Qwen
@@ -57,12 +72,13 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
 		"Qwen2.5-7B-Instruct": "Qwen2.5-7B-Instruct",
 		"qwen3-moe": "qwen3-moe",
 		"Qwen3-8B": "Qwen3-8B",
-		"qwen3-32b": "Qwen3-32B", 
+		"Qwen3-32B": "Qwen3-32B", 
 		"Qwen3-4B": "Qwen3-4B",
 		"qwen3-30b-moe": "qwen3-30b-moe",
 		"Qwen3.5-27B-FP8": "Qwen3.5-27B-FP8",
 		"Qwen3.5-27B": "Qwen3.5-27B",
-		"Memalpha-4B": "Memalpha-4B"
+		"Memalpha-4B": "Memalpha-4B",
+		"Qwen3-30B": "Qwen3-30B-A3B-Thinking-2507"
 	}
 
 	if model_name in list(model_name_vllm.keys()):
@@ -96,9 +112,19 @@ def load_api_chat_completion(model_name, async_=False, *args, **kargs):
 		raise ValueError(f"Unknown model: {model_name}")
 
 	if not async_:
-		client = OpenAIClient(api_key=api_key, base_url=base_url, model=model_name)
+		client = OpenAIClient(
+			api_key=api_key,
+			base_url=base_url,
+			model=model_name,
+			enable_qwen_thinking=enable_qwen_thinking,
+		)
 	else:
-		client = AsyncOpenAIClient(api_key=api_key, base_url=base_url, model=model_name)
+		client = AsyncOpenAIClient(
+			api_key=api_key,
+			base_url=base_url,
+			model=model_name,
+			enable_qwen_thinking=enable_qwen_thinking,
+		)
 
 	return client
 

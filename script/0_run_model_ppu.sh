@@ -1,10 +1,10 @@
 # 定义可用的 GPU 和端口
-gpus=(0,1,2,3)
+gpus=(2,3)
 ports=(7111)
-model_name=Qwen3-30B-A3B-Thinking-2507
+model_name=Qwen3-32B
 MAX_MODEL_LEN=32768
-GPU_MEM_UTIL=0.8
-MAX_NUM_BATCHED_TOKENS=$((4096 * 32))
+GPU_MEM_UTIL=0.9
+MAX_NUM_BATCHED_TOKENS=$((4096 * 16))
 
 # Some vendor libraries dlopen("libcuda.so") directly, so expose CUDA libs explicitly.
 export CUDA_PATH=/usr/local/cuda
@@ -26,6 +26,8 @@ for i in ${!gpus[@]}; do
         --dtype bfloat16 \
         --tensor-parallel-size ${gpu_count} \
         --gpu-memory-utilization "${GPU_MEM_UTIL}" \
+        # --enable-auto-tool-choice \
+        # --tool-call-parser hermes \
         --api-key zjj &
 done
 

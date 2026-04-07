@@ -1,3 +1,5 @@
+import logging
+import os
 from typing import List, Optional
 
 from benchmark.base import QuestionItem
@@ -11,6 +13,28 @@ try:
     from transformers import AutoTokenizer
 except ImportError:
     AutoTokenizer = None
+
+logger = logging.getLogger(__name__)
+
+
+def _load_context_tokenizer():
+    """Load tokenizer for memory context truncation. Network optional if EASY_MEM_TOKENIZER is a local path."""
+    if AutoTokenizer is None:
+        return None
+    raw = os.environ.get("EASY_MEM_TOKENIZER", "Qwen/Qwen2.5-7B-Instruct").strip()
+    if raw.lower() in ("", "0", "false", "none", "off"):
+        return None
+    local_only = os.environ.get("HF_HUB_OFFLINE", "").lower() in ("1", "true", "yes")
+    try:
+        return AutoTokenizer.from_pretrained(raw, local_files_only=local_only)
+    except Exception as exc:
+        logger.warning(
+            "Failed to load context tokenizer %r (%s); truncation uses raw text length.",
+            raw,
+            exc,
+        )
+        return None
+
 
 def trim_context(context: str, tokenizer, max_tokens: int) -> str:
     if tokenizer is None:
@@ -53,11 +77,7 @@ class StandardAgent(BaseAgent):
             MemoryTraceLogger(method="agent", log_dir=trace_log_dir) if trace_log_dir else None
         )
 
-        if AutoTokenizer is not None:
-            # 默认使用 Qwen tokenizer 近似统计
-            self.tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-7B-Instruct")
-        else:
-            self.tokenizer = None
+        self.tokenizer = _load_context_tokenizer()
 
     def _build_prompt(self, question: QuestionItem, context_block: str) -> str:
         options_text = "\n".join(question.options) if question.options else ""

@@ -123,6 +123,7 @@ def main() -> None:
     parser.add_argument(
         "trace_dir",
         type=Path,
+        default="/mnt/data/zjj/project/easy_mem/logs/memory_trace/locomo_gran4_mem0_Qwen3-32B_top20_0406",
         help="Directory containing per-episode *.jsonl memory traces (e.g. logs/memory_trace/<experiment_name>)",
     )
     parser.add_argument(

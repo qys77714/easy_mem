@@ -36,6 +36,7 @@ class Mem0MemorySystem(BaseMemorySystem):
         embed_client: Optional["OpenAI"] = None,
         database_root: Optional[str] = None,
         related_memory_top_k: int = 5,
+        related_memory_aggregate_cap: int = 10,
         language: str = "en",
         granularity: Union[str, int] = "all",
         trace_log_dir: Optional[str] = None,
@@ -56,6 +57,7 @@ class Mem0MemorySystem(BaseMemorySystem):
             raise ValueError("embed_client must be provided for Mem0MemorySystem.")
             
         self.related_memory_top_k = max(1, related_memory_top_k)
+        self._related_memory_aggregate_cap = max(1, int(related_memory_aggregate_cap))
         self.language = language
         df = (dialogue_format or "user_assistant").strip().lower()
         if df not in ("user_assistant", "named_speakers"):
@@ -409,12 +411,11 @@ class Mem0MemorySystem(BaseMemorySystem):
 
         if not aggregated:
             return None, {}
-                
-        if len(aggregated) > 20:
-            # 根据 memory.score 降序排序，取前20个
+
+        cap = self._related_memory_aggregate_cap
+        if len(aggregated) > cap:
             sorted_items = sorted(aggregated.items(), key=lambda item: item[1].score, reverse=True)
-            selected_items = sorted_items[:20]
-            aggregated = OrderedDict(selected_items)
+            aggregated = OrderedDict(sorted_items[:cap])
 
         temp_uuid_mapping = {str(idx): memory_id for idx, memory_id in enumerate(aggregated.keys())}
 

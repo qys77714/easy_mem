@@ -242,7 +242,7 @@ class MemAlphaMemorySystem(BaseMemorySystem):
         if not model_name:
             raise RuntimeError("llm_client must expose .model_name")
 
-        from utils.openai_client import _extra_body_disable_qwen_thinking
+        from utils.openai_client import merge_extra_body_qwen_thinking
 
         # Do not set tool_choice="auto": vLLM rejects it unless the server is started with
         # --enable-auto-tool-choice and --tool-call-parser (see vLLM OpenAI server docs).
@@ -256,7 +256,10 @@ class MemAlphaMemorySystem(BaseMemorySystem):
             temperature=0.0,
         )
         if model_name not in ("gpt-4o-mini",):
-            create_kw["extra_body"] = _extra_body_disable_qwen_thinking(None)
+            create_kw["extra_body"] = merge_extra_body_qwen_thinking(
+                None,
+                getattr(self.llm_client, "enable_qwen_thinking", False),
+            )
         with self._manager_http_lock:
             completion = client.chat.completions.create(**create_kw)
 
